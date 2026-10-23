@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Proofwright — tamper-evident credentials</title>
+<meta name="description" content="Issue, anchor and verify academic credentials with real cryptography, entirely in the browser." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23E4431F'/><circle cx='16' cy='16' r='7' fill='none' stroke='%231A0A05' stroke-width='2'/></svg>" />
+<link rel="stylesheet" href="src/css/app.css" />
+</head>
+<body>
+
+<div class="shell">
+
+  <aside class="rail">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="18" fill="#9E2A12"/>
+        <circle cx="20" cy="20" r="18" fill="none" stroke="#E4431F" stroke-width="1.5"/>
+        <circle cx="20" cy="20" r="11" fill="none" stroke="#1A0A05" stroke-width="2" stroke-dasharray="3 2"/>
+        <path d="M20 12v16M14 20h12" stroke="#1A0A05" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <h1>Proof<em>wright</em></h1>
+        <small>Credential Notary</small>
+      </div>
+    </div>
+
+    <nav id="nav">
+      <button data-view="vault"    aria-current="true"><span class="n">01</span> Vault</button>
+      <button data-view="issue"><span class="n">02</span> Issue</button>
+      <button data-view="ledger"><span class="n">03</span> Ledger</button>
+      <button data-view="verify"><span class="n">04</span> Verify</button>
+      <button data-view="sentinel"><span class="n">05</span> Sentinel</button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="identity">
+        <div class="lbl">Issuing authority</div>
+        <div id="issuerName" style="font-size:13px;margin-top:4px;font-weight:600">— not initialised —</div>
+        <div class="did" id="issuerDid">no signing key in this vault</div>
+      </div>
+      <button class="btn ghost" id="wipe" style="font-size:12px">Wipe local vault</button>
+    </div>
+  </aside>
+
+  <main>
+
+    <!-- 01 VAULT -->
+    <section class="view on" id="view-vault">
+      <div class="eyebrow">01 — Vault</div>
+      <h2>A degree is only worth<br>what its <em>proof</em> is worth.</h2>
+      <p class="lede">
+        Proofwright turns a paper certificate into a cryptographic object. The registrar seals a batch
+        of credentials under one Merkle root, signs the block header, and publishes 64 bytes. Anyone
+        holding a credential can then prove it is genuine — offline, in under a second, without ever
+        asking the university.
+      </p>
+
+      <div class="sealwrap" id="sealwrap"></div>
+
+      <div class="grid g3" style="margin-bottom:18px">
+        <div class="stat"><div class="k">Sealed blocks</div><div class="v" id="sBlocks">0</div></div>
+        <div class="stat"><div class="k">Credentials anchored</div><div class="v" id="sCreds">0</div></div>
+        <div class="stat"><div class="k">Awaiting seal</div><div class="v" id="sPending">0</div></div>
+      </div>
+
+      <div class="grid g2">
+        <div class="panel">
+          <h3>Chain tip</h3>
+          <dl class="kv" id="tipKv"><dt>state</dt><dd>empty ledger</dd></dl>
+        </div>
+        <div class="panel">
+          <h3>Get started</h3>
+          <p class="note" style="margin-top:0">
+            The vault holds an ECDSA P-256 keypair generated in your browser. The private key never
+            leaves this device — it is not transmitted anywhere, because there is nowhere to transmit it to.
+          </p>
+          <div class="btns" style="margin-top:16px">
+            <button class="btn primary" id="initVault">Initialise issuing key</button>
+            <button class="btn" id="seedDemo">Load demo cohort</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="grid g3">
+        <div class="panel">
+          <h3>What is real here</h3>
+          <p class="note" style="margin:0">
+            SHA-256 digests, ECDSA P-256 signatures and Merkle inclusion proofs all run through the
+            browser's native <code>crypto.subtle</code>. Nothing is simulated. Break a byte and the
+            maths genuinely stops agreeing.
+          </p>
+        </div>
+        <div class="panel">
+          <h3>Why a Merkle root</h3>
+          <p class="note" style="margin:0">
+            Publishing one root per batch keeps every student record private while still committing to
+            it. A proof for one credential is <code>log₂(n)</code> hashes — about 10 for a cohort of a
+            thousand.
+          </p>
+        </div>
+        <div class="panel">
+          <h3>Where a chain fits</h3>
+          <p class="note" style="margin:0">
+            The signed header is the only thing that needs an anchor. Writing those 64 bytes to a public
+            chain costs cents and makes the registrar's own history immutable, even to the registrar.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 ISSUE -->
+    <section class="view" id="view-issue">
+      <div class="eyebrow">02 — Issue</div>
+      <h2>Draft, queue, <em>seal</em>.</h2>
+      <p class="lede">
+        Credentials collect in a pending batch. Sealing commits all of them under a single Merkle root,
+        signs the block header with the vault key, and returns a portable passport per credential.
+      </p>
+
+      <div class="grid g2">
+        <div class="panel">
+          <h3>New credential</h3>
+          <form id="credForm">
+            <div class="row">
+              <label><span class="t">Holder name</span><input name="holder" required placeholder="Aditi Raghavan" /></label>
+              <label><span class="t">Enrolment ID</span><input name="identifier" required placeholder="22BCA1047" /></label>
+            </div>
+            <label><span class="t">Programme</span><input name="programme" required placeholder="B.C.A. Data Science" /></label>
+            <div class="row">
+              <label><span class="t">Credential type</span>
+                <select name="kind">
+                  <option>Degree Certificate</option>
+                  <option>Provisional Certificate</option>
+                  <option>Transcript</option>
+                  <option>Course Completion</option>
+                  <option>Internship Letter</option>
+                </select>
+              </label>
+              <label><span class="t">Date awarded</span><input name="awarded" type="date" required /></label>
+            </div>
+            <div class="row">
+              <label><span class="t">Grade / CGPA</span><input name="grade" placeholder="8.74" /></label>
+              <label><span class="t">Bind a document (optional)</span><input name="doc" type="file" /></label>
+            </div>
+            <div class="btns">
+              <button class="btn primary" type="submit">Add to batch</button>
+              <span class="note" id="docHint"></span>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h3>Pending batch <span class="tag" id="pendTag">0 queued</span></h3>
+          <div class="queue" id="queue"><div class="empty">Nothing queued. Add a credential or load the demo cohort.</div></div>
+          <div class="btns" style="margin-top:16px">
+            <button class="btn primary" id="sealBtn" disabled>Seal batch into block</button>
+            <button class="btn ghost" id="clearQueue">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="passportOut" style="margin-top:18px"></div>
+    </section>
+
+    <!-- 03 LEDGER -->
+    <section class="view" id="view-ledger">
+      <div class="eyebrow">03 — Ledger</div>
+      <h2>Every block remembers<br>the one <em>before</em> it.</h2>
+      <p class="lede">
+        Each header carries the hash of its predecessor, so editing an old record invalidates every
+        block after it. Run the audit, then tamper with a sealed record and run it again.
+      </p>
+
+      <div class="btns" style="margin-bottom:20px">
+        <button class="btn primary" id="auditBtn">Run chain audit</button>
+        <button class="btn danger" id="tamperBtn">Tamper with a sealed record</button>
+      </div>
+
+      <div id="auditOut"></div>
+      <div id="chainOut" class="scroll"></div>
+    </section>
+
+    <!-- 04 VERIFY -->
+    <section class="view" id="view-verify">
+      <div class="eyebrow">04 — Verify</div>
+      <h2>Five checks. <em>No</em> phone call.</h2>
+      <p class="lede">
+        Paste a passport and the verifier recomputes the credential digest, walks the Merkle path to the
+        anchored root, checks the issuer's signature over the header, and confirms the signing key
+        derives the DID it claims.
+      </p>
+
+      <div class="grid g2">
+        <div class="panel">
+          <h3>Passport document</h3>
+          <label>
+            <span class="t">Paste passport JSON</span>
+            <textarea id="passportIn" spellcheck="false" placeholder='{ "format": "proofwright/passport@1", ... }'></textarea>
+          </label>
+          <label><span class="t">Attach the bound document (optional)</span><input type="file" id="verifyFile" /></label>
+          <div class="btns">
+            <button class="btn primary" id="verifyBtn">Verify</button>
+            <button class="btn" id="loadSample">Load a real passport</button>
+          </div>
+          <div class="hr" style="margin:18px 0"></div>
+          <h3>Tamper lab</h3>
+          <p class="note" style="margin-top:-4px">
+            Alter the loaded passport and watch exactly which check breaks.
+          </p>
+          <div class="btns" style="margin-top:12px">
+            <button class="btn danger" data-tamper="grade">Change the grade</button>
+            <button class="btn danger" data-tamper="holder">Change the holder</button>
+            <button class="btn danger" data-tamper="root">Swap the Merkle root</button>
+            <button class="btn danger" data-tamper="sig">Forge the signature</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Result</h3>
+          <div id="verifyOut"><div class="empty">No passport verified yet.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 05 SENTINEL -->
+    <section class="view" id="view-sentinel">
+      <div class="eyebrow">05 — Sentinel</div>
+      <h2>Cryptography proves <em>intact</em>.<br>It cannot prove <em>honest</em>.</h2>
+      <p class="lede">
+        A perfectly signed credential can still be fraudulent if the registrar was compromised. Sentinel
+        is a deterministic rule engine over the issuance record — every flag traces to a stated rule, so
+        an auditor can argue with it. No model, no black box, no false confidence.
+      </p>
+
+      <div class="grid g2">
+        <div class="panel">
+          <h3>Findings <span class="tag" id="flagTag">0</span></h3>
+          <div id="flagsOut" class="scroll"><div class="empty">Nothing issued yet.</div></div>
+          <div class="btns" style="margin-top:14px"><button class="btn primary" id="scanBtn">Re-scan issuance record</button></div>
+        </div>
+        <div class="panel">
+          <h3>Rule set</h3>
+          <div id="rulesOut"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module" src="src/js/app.js"></script>
+</body>
+</html>
